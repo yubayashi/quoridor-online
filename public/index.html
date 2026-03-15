@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コリドール - オンライン対戦</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 20px 0 10px;
+      font-size: 28px;
+      letter-spacing: 2px;
+      color: #e0c097;
+    }
+
+    /* ロビー画面 */
+    #lobby {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-top: 60px;
+    }
+
+    #lobby p { color: #aaa; font-size: 14px; }
+
+    .btn {
+      padding: 14px 36px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-primary { background: #e0c097; color: #1a1a2e; }
+    .btn-secondary { background: #3a3a5e; color: #eee; }
+
+    #roomLink {
+      background: #2a2a4a;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      user-select: all;
+      display: none;
+      word-break: break-all;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    #copyBtn { display: none; }
+
+    #waitMsg {
+      display: none;
+      color: #e0c097;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    #joinSection {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #joinSection input {
+      padding: 12px 16px;
+      font-size: 16px;
+      border: 2px solid #3a3a5e;
+      border-radius: 8px;
+      background: #2a2a4a;
+      color: #eee;
+      width: 200px;
+    }
+
+    #errorMsg { color: #ff6b6b; font-size: 14px; display: none; }
+
+    /* ゲーム画面 */
+    #game { display: none; flex-direction: column; align-items: center; gap: 12px; }
+
+    #info {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      font-size: 14px;
+      margin: 8px 0;
+    }
+
+    .player-info {
+      padding: 8px 16px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .player-info.active { box-shadow: 0 0 12px rgba(224,192,151,0.5); }
+
+    .p1-info { background: #2d4a7a; }
+    .p2-info { background: #7a2d2d; }
+
+    .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-p1 { background: #4a9eff; }
+    .dot-p2 { background: #ff4a4a; }
+
+    .wall-count { color: #ccc; font-size: 12px; }
+
+    #turnLabel {
+      font-size: 16px;
+      font-weight: bold;
+      color: #e0c097;
+      min-height: 24px;
+    }
+
+    /* ボード */
+    #boardContainer { position: relative; }
+
+    canvas {
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* 壁モード切替 */
+    #controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .mode-btn {
+      padding: 8px 20px;
+      font-size: 14px;
+      border: 2px solid #3a3a5e;
+      border-radius: 6px;
+      background: transparent;
+      color: #aaa;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      border-color: #e0c097;
+      color: #e0c097;
+      background: rgba(224, 192, 151, 0.1);
+    }
+
+    #result {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    #resultText { font-size: 24px; font-weight: bold; }
+
+    #notification {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ff6b6b;
+      color: white;
+      padding: 10px 24px;
+      border-radius: 8px;
+      display: none;
+      z-index: 100;
+      animation: fadeIn 0.3s;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } }
+  </style>
+</head>
+<body>
+  <h1>QUORIDOR</h1>
+
+  <div id="notification"></div>
+
+  <!-- ロビー -->
+  <div id="lobby">
+    <p>友達とURL共有して対戦しよう</p>
+    <button class="btn btn-primary" onclick="createRoom()">部屋をつくる</button>
+    <div id="roomLink"></div>
+    <button class="btn btn-secondary" id="copyBtn" onclick="copyLink()">URLをコピー</button>
+    <p id="waitMsg">相手の参加を待っています...</p>
+
+    <div style="margin: 16px 0; color: #555;">── または ──</div>
+
+    <div id="joinSection">
+      <input id="roomInput" placeholder="ルームIDを入力" />
+      <button class="btn btn-secondary" onclick="joinRoom()">参加する</button>
+    </div>
+    <p id="errorMsg"></p>
+  </div>
+
+  <!-- ゲーム -->
+  <div id="game">
+    <div id="info">
+      <div class="player-info p1-info" id="p1Info">
+        <span class="dot dot-p1"></span>
+        <span id="p1Label">プレイヤー1</span>
+        <span class="wall-count" id="p1Walls">壁: 10</span>
+      </div>
+      <div class="player-info p2-info" id="p2Info">
+        <span class="dot dot-p2"></span>
+        <span id="p2Label">プレイヤー2</span>
+        <span class="wall-count" id="p2Walls">壁: 10</span>
+      </div>
+    </div>
+    <div id="turnLabel"></div>
+
+    <div id="boardContainer">
+      <canvas id="board"></canvas>
+    </div>
+
+    <div id="controls">
+      <button class="mode-btn active" id="moveBtn" onclick="setMode('move')">コマを動かす</button>
+      <button class="mode-btn" id="hwallBtn" onclick="setMode('hwall')">横壁を置く</button>
+      <button class="mode-btn" id="vwallBtn" onclick="setMode('vwall')">縦壁を置く</button>
+    </div>
+
+    <div id="result">
+      <div id="resultText"></div>
+      <button class="btn btn-primary" onclick="requestRematch()">もう一回</button>
+      <p id="rematchMsg" style="color:#e0c097; display:none;">相手の応答を待っています...</p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let myIdx = -1;
+    let state = null;
+    let mode = 'move'; // 'move', 'hwall', 'vwall'
+    let hoverTarget = null;
+
+    const CELL = 52;
+    const GAP = 8;
+    const PAD = 20;
+    const UNIT = CELL + GAP;
+    const BOARD_SIZE = PAD * 2 + CELL * 9 + GAP * 8;
+
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    canvas.width = BOARD_SIZE;
+    canvas.height = BOARD_SIZE;
+
+    // URLにルームIDがあれば自動参加
+    window.addEventListener('load', () => {
+      const params = new URLSearchParams(window.location.search);
+      const roomId = params.get('room');
+      if (roomId) {
+        document.getElementById('roomInput').value = roomId;
+        joinRoom();
+      }
+    });
+
+    function createRoom() {
+      socket.emit('createRoom', (res) => {
+        if (res.error) return showError(res.error);
+        myIdx = res.playerIdx;
+        const url = `${window.location.origin}?room=${res.roomId}`;
+        const linkEl = document.getElementById('roomLink');
+        linkEl.textContent = url;
+        linkEl.style.display = 'block';
+        document.getElementById('copyBtn').style.display = 'inline-block';
+        document.getElementById('waitMsg').style.display = 'block';
+        document.getElementById('joinSection').style.display = 'none';
+      });
+    }
+
+    function joinRoom() {
+      const roomId = document.getElementById('roomInput').value.trim();
+      if (!roomId) return showError('ルームIDを入力してください');
+      socket.emit('joinRoom', roomId, (res) => {
+        if (res.error) return showError(res.error);
+        myIdx = res.playerIdx;
+      });
+    }
+
+    function copyLink() {
+      const text = document.getElementById('roomLink').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        notify('URLをコピーしました！');
+      });
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 3000);
+    }
+
+    function notify(msg, duration = 2000) {
+      const el = document.getElementById('notification');
+      el.textContent = msg;
+      el.style.display = 'block';
+      el.style.background = msg.includes('できません') ? '#ff6b6b' : '#4a9e6b';
+      setTimeout(() => el.style.display = 'none', duration);
+    }
+
+    // ゲーム開始
+    socket.on('gameStart', (s) => {
+      state = s;
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game').style.display = 'flex';
+      document.getElementById('result').style.display = 'none';
+      if (myIdx === 0) {
+        document.getElementById('p1Label').textContent = 'あなた (青)';
+        document.getElementById('p2Label').textContent = '相手 (赤)';
+      } else {
+        document.getElementById('p1Label').textContent = '相手 (青)';
+        document.getElementById('p2Label').textContent = 'あなた (赤)';
+      }
+      draw();
+    });
+
+    socket.on('gameUpdate', (s) => {
+      state = s;
+      draw();
+      if (state.phase === 'finished') {
+        const resultEl = document.getElementById('result');
+        resultEl.style.display = 'flex';
+        document.getElementById('rematchMsg').style.display = 'none';
+        const text = state.winner === myIdx ? '勝利！' : '敗北...';
+        const color = state.winner === myIdx ? '#4a9eff' : '#ff4a4a';
+        document.getElementById('resultText').textContent = text;
+        document.getElementById('resultText').style.color = color;
+      }
+    });
+
+    socket.on('invalidAction', (msg) => notify(msg));
+
+    socket.on('opponentLeft', () => notify('相手が退出しました', 5000));
+
+    socket.on('rematchWaiting', () => {
+      document.getElementById('rematchMsg').style.display = 'block';
+    });
+
+    function requestRematch() {
+      socket.emit('rematch');
+    }
+
+    function setMode(m) {
+      mode = m;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      if (m === 'move') document.getElementById('moveBtn').classList.add('active');
+      else if (m === 'hwall') document.getElementById('hwallBtn').classList.add('active');
+      else document.getElementById('vwallBtn').classList.add('active');
+      draw();
+    }
+
+    // 描画
+    function draw() {
+      if (!state) return;
+
+      ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
+
+      // 背景
+      ctx.fillStyle = '#2a2a4a';
+      ctx.fillRect(0, 0, BOARD_SIZE, BOARD_SIZE);
+
+      // ゴールゾーン表示
+      ctx.fillStyle = 'rgba(74, 158, 255, 0.08)';
+      ctx.fillRect(PAD, PAD + 8 * UNIT, 9 * UNIT - GAP, CELL);
+      ctx.fillStyle = 'rgba(255, 74, 74, 0.08)';
+      ctx.fillRect(PAD, PAD, 9 * UNIT - GAP, CELL);
+
+      // マス
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          const x = PAD + c * UNIT;
+          const y = PAD + r * UNIT;
+          ctx.fillStyle = '#3d3d5c';
+          ctx.fillRect(x, y, CELL, CELL);
+        }
+      }
+
+      // 移動可能マスのハイライト
+      if (state.phase === 'playing' && state.currentPlayer === myIdx && mode === 'move') {
+        for (let r = 0; r < 9; r++) {
+          for (let c = 0; c < 9; c++) {
+            if (isValidMoveClient(myIdx, r, c)) {
+              const x = PAD + c * UNIT;
+              const y = PAD + r * UNIT;
+              ctx.fillStyle = 'rgba(224, 192, 151, 0.2)';
+              ctx.fillRect(x, y, CELL, CELL);
+            }
+          }
+        }
+      }
+
+      // 壁
+      for (const w of state.walls) {
+        drawWall(w.row, w.col, w.orientation, '#e0c097');
+      }
+
+      // ホバー中の壁プレビュー
+      if (hoverTarget && (mode === 'hwall' || mode === 'vwall') &&
+          state.phase === 'playing' && state.currentPlayer === myIdx) {
+        const ori = mode === 'hwall' ? 'h' : 'v';
+        drawWall(hoverTarget.row, hoverTarget.col, ori, 'rgba(224, 192, 151, 0.4)');
+      }
+
+      // プレイヤー
+      drawPlayer(state.players[0], '#4a9eff');
+      drawPlayer(state.players[1], '#ff4a4a');
+
+      // UI更新
+      document.getElementById('p1Walls').textContent = `壁: ${state.players[0].walls}`;
+      document.getElementById('p2Walls').textContent = `壁: ${state.players[1].walls}`;
+
+      document.getElementById('p1Info').classList.toggle('active', state.currentPlayer === 0);
+      document.getElementById('p2Info').classList.toggle('active', state.currentPlayer === 1);
+
+      if (state.phase === 'playing') {
+        document.getElementById('turnLabel').textContent =
+          state.currentPlayer === myIdx ? 'あなたのターン' : '相手のターン';
+      } else if (state.phase === 'finished') {
+        document.getElementById('turnLabel').textContent = '';
+      }
+    }
+
+    function drawPlayer(p, color) {
+      const x = PAD + p.col * UNIT + CELL / 2;
+      const y = PAD + p.row * UNIT + CELL / 2;
+      ctx.beginPath();
+      ctx.arc(x, y, CELL / 2 - 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawWall(row, col, ori, color) {
+      ctx.fillStyle = color;
+      if (ori === 'h') {
+        const x = PAD + col * UNIT;
+        const y = PAD + row * UNIT + CELL;
+        ctx.fillRect(x, y + 1, CELL * 2 + GAP, GAP - 2);
+      } else {
+        const x = PAD + col * UNIT + CELL;
+        const y = PAD + row * UNIT;
+        ctx.fillRect(x + 1, y, GAP - 2, CELL * 2 + GAP);
+      }
+    }
+
+    // クライアント側の簡易移動チェック（ハイライト用）
+    function isValidMoveClient(playerIdx, toRow, toCol) {
+      const player = state.players[playerIdx];
+      const other = state.players[1 - playerIdx];
+      const fr = player.row, fc = player.col;
+      const dr = toRow - fr, dc = toCol - fc;
+
+      if (toRow < 0 || toRow > 8 || toCol < 0 || toCol > 8) return false;
+      if (toRow === other.row && toCol === other.col) return false;
+      if (toRow === fr && toCol === fc) return false;
+
+      // 隣接
+      if ((Math.abs(dr) === 1 && dc === 0) || (dr === 0 && Math.abs(dc) === 1)) {
+        return !isBlockedClient(fr, fc, toRow, toCol);
+      }
+      // 飛び越し
+      if (Math.abs(dr) === 2 && dc === 0) {
+        const midR = fr + dr / 2;
+        if (midR === other.row && fc === other.col) {
+          return !isBlockedClient(fr, fc, midR, fc) && !isBlockedClient(midR, fc, toRow, toCol);
+        }
+      }
+      if (dr === 0 && Math.abs(dc) === 2) {
+        const midC = fc + dc / 2;
+        if (fr === other.row && midC === other.col) {
+          return !isBlockedClient(fr, fc, fr, midC) && !isBlockedClient(fr, midC, toRow, toCol);
+        }
+      }
+      // 斜め
+      if (Math.abs(dr) === 1 && Math.abs(dc) === 1) {
+        if (other.row === fr + dr && other.col === fc) {
+          if (!isBlockedClient(fr, fc, other.row, other.col)) {
+            const beyondR = other.row + dr;
+            if (beyondR < 0 || beyondR > 8 || isBlockedClient(other.row, other.col, beyondR, other.col)) {
+              return !isBlockedClient(other.row, other.col, other.row, other.col + dc);
+            }
+          }
+        }
+        if (other.row === fr && other.col === fc + dc) {
+          if (!isBlockedClient(fr, fc, other.row, other.col)) {
+            const beyondC = other.col + dc;
+            if (beyondC < 0 || beyondC > 8 || isBlockedClient(other.row, other.col, other.row, beyondC)) {
+              return !isBlockedClient(other.row + dr, other.col, other.row + dr, other.col);
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function isBlockedClient(r1, c1, r2, c2) {
+      for (const w of state.walls) {
+        if (w.orientation === 'h') {
+          if (r2 === r1 + 1 && c2 === c1) {
+            if (w.row === r1 && (w.col === c1 || w.col === c1 - 1)) return true;
+          }
+          if (r2 === r1 - 1 && c2 === c1) {
+            if (w.row === r2 && (w.col === c1 || w.col === c1 - 1)) return true;
+          }
+        } else {
+          if (c2 === c1 + 1 && r2 === r1) {
+            if (w.col === c1 && (w.row === r1 || w.row === r1 - 1)) return true;
+          }
+          if (c2 === c1 - 1 && r2 === r1) {
+            if (w.col === c2 && (w.row === r1 || w.row === r1 - 1)) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // マウスイベント
+    canvas.addEventListener('click', (e) => {
+      if (!state || state.phase !== 'playing' || state.currentPlayer !== myIdx) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      if (mode === 'move') {
+        const col = Math.floor((mx - PAD) / UNIT);
+        const row = Math.floor((my - PAD) / UNIT);
+        if (row >= 0 && row <= 8 && col >= 0 && col <= 8) {
+          socket.emit('move', { toRow: row, toCol: col });
+        }
+      } else {
+        const wallPos = getWallPosition(mx, my);
+        if (wallPos) {
+          const orientation = mode === 'hwall' ? 'h' : 'v';
+          socket.emit('placeWall', { row: wallPos.row, col: wallPos.col, orientation });
+        }
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!state || state.phase !== 'playing') return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      if (mode === 'hwall' || mode === 'vwall') {
+        hoverTarget = getWallPosition(mx, my);
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      hoverTarget = null;
+      if (state) draw();
+    });
+
+    function getWallPosition(mx, my) {
+      // マスの隙間部分をクリックして壁を置く
+      // 壁はrow,colの交差点に置く（0-7の範囲）
+      const col = Math.round((mx - PAD - CELL / 2) / UNIT) - 0.5;
+      const row = Math.round((my - PAD - CELL / 2) / UNIT) - 0.5;
+      const c = Math.round(col);
+      const r = Math.round(row);
+
+      if (mode === 'hwall') {
+        // 水平壁: マスの下端の隙間付近
+        const nearestRow = Math.round((my - PAD - CELL) / UNIT);
+        const nearestCol = Math.floor((mx - PAD) / UNIT);
+        if (nearestRow >= 0 && nearestRow <= 7 && nearestCol >= 0 && nearestCol <= 7) {
+          return { row: nearestRow, col: nearestCol };
+        }
+      } else {
+        // 垂直壁: マスの右端の隙間付近
+        const nearestRow = Math.floor((my - PAD) / UNIT);
+        const nearestCol = Math.round((mx - PAD - CELL) / UNIT);
+        if (nearestRow >= 0 && nearestRow <= 7 && nearestCol >= 0 && nearestCol <= 7) {
+          return { row: nearestRow, col: nearestCol };
+        }
+      }
+      return null;
+    }
+
+    // キーボードショートカット
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '1') setMode('move');
+      if (e.key === '2') setMode('hwall');
+      if (e.key === '3') setMode('vwall');
+    });
+  </script>
+</body>
+</html>
