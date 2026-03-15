@@ -90,14 +90,16 @@
     #errorMsg { color: #ff6b6b; font-size: 14px; display: none; }
 
     /* ゲーム画面 */
-    #game { display: none; flex-direction: column; align-items: center; gap: 12px; }
+    #game { display: none; flex-direction: column; align-items: center; gap: 12px; padding: 0 8px; width: 100%; }
 
     #info {
       display: flex;
-      gap: 24px;
+      gap: 8px;
       align-items: center;
-      font-size: 14px;
+      font-size: 13px;
       margin: 8px 0;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     .player-info {
@@ -130,18 +132,23 @@
     }
 
     /* ボード */
-    #boardContainer { position: relative; }
+    #boardContainer { position: relative; max-width: 100%; }
 
     canvas {
       border-radius: 4px;
       cursor: pointer;
+      max-width: 100%;
+      height: auto;
     }
 
     /* 壁モード切替 */
     #controls {
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 0 8px;
     }
 
     .mode-btn {
@@ -532,12 +539,23 @@
       return false;
     }
 
-    // マウスイベント
-    canvas.addEventListener('click', (e) => {
-      if (!state || state.phase !== 'playing' || state.currentPlayer !== myIdx) return;
+    // 座標変換（CSS縮小に対応）
+    function getCanvasCoords(e) {
       const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    }
+
+    function handleClick(e) {
+      e.preventDefault();
+      if (!state || state.phase !== 'playing' || state.currentPlayer !== myIdx) return;
+      const { x: mx, y: my } = getCanvasCoords(e);
 
       if (mode === 'move') {
         const col = Math.floor((mx - PAD) / UNIT);
@@ -552,13 +570,15 @@
           socket.emit('placeWall', { row: wallPos.row, col: wallPos.col, orientation });
         }
       }
-    });
+    }
+
+    // マウス＆タッチイベント
+    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('touchend', handleClick);
 
     canvas.addEventListener('mousemove', (e) => {
       if (!state || state.phase !== 'playing') return;
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const { x: mx, y: my } = getCanvasCoords(e);
 
       if (mode === 'hwall' || mode === 'vwall') {
         hoverTarget = getWallPosition(mx, my);
